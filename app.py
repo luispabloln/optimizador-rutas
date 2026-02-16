@@ -39,20 +39,33 @@ def haversine(lat1, lon1, lat2, lon2):
 
 def cargar_datos(uploaded_file):
     try:
-        df = pd.read_excel(uploaded_file)
+        # Detectar si es CSV o Excel
+        if uploaded_file.name.endswith('.csv'):
+            df = pd.read_csv(uploaded_file)
+        else:
+            df = pd.read_excel(uploaded_file)
+            
         # Normalizar columnas a minúsculas y sin espacios
         df.columns = df.columns.str.strip().str.lower()
         
-        # Mapeo de nombres comunes
+        # Mapeo de nombres específicos de tu archivo
         cols_map = {
-            'lat': 'latitud', 'lon': 'longitud', 
-            'fecha': 'fecha_hora', 'hora': 'fecha_hora'
+            'lat': 'latitud', 
+            'lon': 'longitud', 
+            'empleado': 'vendedor' # Adaptado a tu archivo
         }
         df = df.rename(columns=cols_map)
+
+        # Unir columnas de Fecha y Hora si vienen separadas
+        if 'fecha' in df.columns and 'hora' in df.columns:
+            df['fecha_hora'] = df['fecha'].astype(str) + ' ' + df['hora'].astype(str)
+        elif 'fecha' in df.columns and 'fecha_hora' not in df.columns:
+            df['fecha_hora'] = df['fecha']
 
         # Convertir fecha
         df['fecha_hora'] = pd.to_datetime(df['fecha_hora'])
         df['fecha_solo'] = df['fecha_hora'].dt.date
+        
         return df
     except Exception as e:
         st.error(f"Error al leer el archivo: {e}")
@@ -104,7 +117,6 @@ def calcular_metricas_detalladas(df, velocidad_kmh):
     
     total_km = 0.0
     
-    # El primer punto no tiene "anterior", así que empieza en 0
     distancias.append(0)
     tiempos.append(0)
     
@@ -115,13 +127,11 @@ def calcular_metricas_detalladas(df, velocidad_kmh):
         dist_km = haversine(p1['latitud'], p1['longitud'], p2['latitud'], p2['longitud'])
         total_km += dist_km
         
-        # Tiempo = Distancia / Velocidad (en horas) -> Convertir a minutos
         tiempo_min = (dist_km / velocidad_kmh) * 60
         
         distancias.append(round(dist_km, 2))
         tiempos.append(round(tiempo_min, 1))
         
-    # Agregamos las columnas al DF para mostrar en tabla (desplazado: fila i muestra distancia desde i-1)
     df_result = df.copy()
     df_result['dist_desde_anterior_km'] = distancias
     df_result['minutos_viaje'] = tiempos
@@ -161,7 +171,8 @@ def generar_kml(df_real, df_opt, vendedor, fecha):
 
 # --- INTERFAZ PRINCIPAL ---
 
-archivo = st.file_uploader("📂 Cargar Excel (.xlsx)", type=["xlsx"])
+# 1. Modificado para aceptar CSV y XLSX
+archivo = st.file_uploader("📂 Cargar Archivo de Datos", type=["xlsx", "csv"])
 
 if archivo:
     df = cargar_datos(archivo)
@@ -169,7 +180,7 @@ if archivo:
     if df is not None:
         c1, c2 = st.columns(2)
         with c1:
-            vendedor = st.selectbox("Vendedor", df['vendedor'].unique())
+            vendedor = st.selectbox("Empleado", df['vendedor'].unique())
         with c2:
             fechas = df[df['vendedor'] == vendedor]['fecha_solo'].unique()
             fecha = st.selectbox("Fecha", sorted(fechas))
@@ -178,18 +189,14 @@ if archivo:
         ruta_real = df[(df['vendedor'] == vendedor) & (df['fecha_solo'] == fecha)].sort_values(by='fecha_hora').reset_index(drop=True)
         
         if len(ruta_real) > 1:
-            # 1. Calcular Optimización
             ruta_optima_raw = optimizar_ruta_vecino(ruta_real)
             
-            # 2. Calcular Métricas y Tiempos
             km_real, min_real, df_real_final = calcular_metricas_detalladas(ruta_real, velocidad_promedio)
             km_opt, min_opt, df_opt_final = calcular_metricas_detalladas(ruta_optima_raw, velocidad_promedio)
             
-            # Métricas comparativas
             ahorro_km = km_real - km_opt
             ahorro_min = min_real - min_opt
             
-            # --- DASHBOARD ---
             st.divider()
             col1, col2, col3, col4 = st.columns(4)
             
@@ -197,7 +204,7 @@ if archivo:
             col2.metric("🎯 Distancia Óptima", f"{km_opt:.2f} km", f"{min_opt:.0f} min cond.")
             col3.metric("💰 Ahorro Distancia", f"{ahorro_km:.2f} km", delta_color="normal")
             col4.metric("⏱️ Ahorro Tiempo", f"{ahorro_min:.0f} min", delta_color="normal")
-            st.caption(f"*Tiempos calculados a una velocidad promedio constante de {velocidad_promedio} km/h (sin contar tiempos de parada en cliente).")
+            st.caption(f"*Tiempos calculados a una velocidad promedio constante de {velocidad_promedio} km/h.")
             st.divider()
 
             # --- MAPA ---
@@ -209,9 +216,7 @@ if archivo:
             folium.PolyLine(puntos_real, color="red", weight=4, opacity=0.5, tooltip="Ruta Real").add_to(m)
             folium.PolyLine(puntos_opt, color="green", weight=4, opacity=0.8, dash_array='5, 10', tooltip="Ruta Sugerida").add_to(m)
             
-            # Marcadores numerados ruta OPTIMIZADA
             for i, row in df_opt_final.iterrows():
-                # Info para el popup
                 texto_popup = f"""
                 <b>Orden Sugerido: {i+1}</b><br>
                 Cliente: {row['cliente']}<br>
@@ -241,4 +246,4 @@ if archivo:
             st.download_button("📥 Descargar KML", kml_data, f"Ruta_{vendedor}.kml")
             
         else:
-            st.warning("No hay suficientes datos para generar ruta.")
+            st.warning("No hay suficientes datos para generar ruta en la fecha seleccionada.")
