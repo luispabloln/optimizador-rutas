@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import folium
-from folium.features import DivIcon  # Importante para los números
+from folium.features import DivIcon
 from streamlit_folium import st_folium
 from scipy.spatial.distance import cdist
 import simplekml
@@ -26,9 +26,9 @@ with st.sidebar:
     st.divider()
     st.subheader("👁️ Visualización del Mapa")
     
-    # Opción para elegir qué número mostrar
+    # Opción para elegir qué número ver dentro del círculo
     tipo_etiqueta = st.radio(
-        "¿Qué número ver en el marcador?",
+        "¿Qué número ver DENTRO del círculo?",
         ["Orden Sugerido (Verde)", "Orden Original (Rojo)"],
         index=0
     )
@@ -57,12 +57,14 @@ def cargar_datos(uploaded_file):
             
         df.columns = df.columns.str.strip().str.lower()
         
+        # Mapeo flexible de columnas
         cols_map = {
             'lat': 'latitud', 'lon': 'longitud', 
             'empleado': 'vendedor'
         }
         df = df.rename(columns=cols_map)
 
+        # Unir fecha y hora si vienen separadas
         if 'fecha' in df.columns and 'hora' in df.columns:
             df['fecha_hora'] = df['fecha'].astype(str) + ' ' + df['hora'].astype(str)
         elif 'fecha' in df.columns:
@@ -186,10 +188,10 @@ if archivo:
                 puntos_opt = list(zip(ruta_optima_raw['latitud'], ruta_optima_raw['longitud']))
                 folium.PolyLine(puntos_opt, color="green", weight=4, opacity=0.6, dash_array='5, 10', tooltip="Sugerido").add_to(m)
             
-            # --- MARCADORES PERSONALIZADOS (NUMEROS) ---
+            # --- MARCADORES PERSONALIZADOS ---
             for i, row in df_opt_final.iterrows():
                 
-                # Definir qué número y color usar según la selección del usuario
+                # 1. Configurar Icono Visual (Circulo con numero)
                 if "Sugerido" in tipo_etiqueta:
                     numero_mostrar = row['orden_sugerido']
                     color_fondo = "#28a745" # Verde
@@ -197,7 +199,6 @@ if archivo:
                     numero_mostrar = row['orden_original']
                     color_fondo = "#dc3545" # Rojo
                 
-                # HTML para el circulo con numero
                 html_icono = f"""
                 <div style="
                     background-color: {color_fondo};
@@ -218,20 +219,24 @@ if archivo:
                 </div>
                 """
                 
+                # 2. Configurar Tooltip (Lo que pediste: Original vs Sugerido)
+                texto_tooltip = f"Cliente: {row['cliente']} | Orig: #{row['orden_original']} ➡️ Sug: #{row['orden_sugerido']}"
+                
+                # 3. Configurar Popup (Click para detalles)
                 texto_popup = f"""
                 <div style="font-family: sans-serif; min-width: 200px;">
                     <h4 style="margin:0;">{row['cliente']}</h4>
                     <hr style="margin: 5px 0;">
                     <b>Orden Real:</b> {row['orden_original']}<br>
                     <b>Orden Sugerido:</b> {row['orden_sugerido']}<br>
-                    <b>Hora:</b> {row['fecha_hora'].time()}
+                    <b>Hora Real:</b> {row['fecha_hora'].time()}
                 </div>
                 """
                 
                 folium.Marker(
                     location=[row['latitud'], row['longitud']],
                     popup=folium.Popup(texto_popup, max_width=250),
-                    tooltip=f"Cliente: {row['cliente']}",
+                    tooltip=texto_tooltip, # <--- AQUI ESTA TU ETIQUETA FLOTANTE
                     icon=DivIcon(
                         icon_size=(30,30),
                         icon_anchor=(15,15),
