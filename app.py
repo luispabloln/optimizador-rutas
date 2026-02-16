@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import folium
+from folium.features import DivIcon  # Importante para los números
 from streamlit_folium import st_folium
 from scipy.spatial.distance import cdist
 import simplekml
@@ -19,14 +20,22 @@ with st.sidebar:
         min_value=10, 
         max_value=60, 
         value=25, 
-        step=5,
-        help="Velocidad estimada para calcular los tiempos de traslado."
+        step=5
     )
     
     st.divider()
     st.subheader("👁️ Visualización del Mapa")
-    ver_original = st.checkbox("Ver Trazado Original (Rojo)", value=True)
-    ver_optimizado = st.checkbox("Ver Trazado Sugerido (Verde)", value=True)
+    
+    # Opción para elegir qué número mostrar
+    tipo_etiqueta = st.radio(
+        "¿Qué número ver en el marcador?",
+        ["Orden Sugerido (Verde)", "Orden Original (Rojo)"],
+        index=0
+    )
+    
+    st.caption("Filtros de Líneas:")
+    ver_original = st.checkbox("Ver Línea Original", value=True)
+    ver_optimizado = st.checkbox("Ver Línea Sugerida", value=True)
 
 # --- FUNCIONES ---
 
@@ -71,9 +80,7 @@ def optimizar_ruta_vecino(df_ruta):
     if len(df_ruta) < 2:
         return df_ruta
     
-    # Guardamos el orden original antes de mover nada
     df_pendientes = df_ruta.copy()
-    
     ruta_ordenada = [df_pendientes.iloc[0]]
     df_pendientes = df_pendientes.iloc[1:]
     
@@ -115,7 +122,6 @@ def calcular_metricas(df, velocidad_kmh):
 def generar_kml(df_real, df_opt, vendedor, fecha):
     kml = simplekml.Kml()
     
-    # Ruta Real (Rojo)
     fol_real = kml.newfolder(name="Ruta Real")
     coords_real = [(row['longitud'], row['latitud']) for _, row in df_real.iterrows()]
     linea_r = fol_real.newlinestring(name="Trayecto Real", coords=coords_real)
@@ -125,7 +131,6 @@ def generar_kml(df_real, df_opt, vendedor, fecha):
     for _, row in df_real.iterrows():
         pnt = fol_real.newpoint(name=f"#{row['orden_original']} (Real)", coords=[(row['longitud'], row['latitud'])])
 
-    # Ruta Optimizada (Verde)
     fol_opt = kml.newfolder(name="Ruta Optimizada")
     coords_opt = [(row['longitud'], row['latitud']) for _, row in df_opt.iterrows()]
     linea_o = fol_opt.newlinestring(name="Trayecto Optimizado", coords=coords_opt)
@@ -133,7 +138,6 @@ def generar_kml(df_real, df_opt, vendedor, fecha):
     linea_o.style.linestyle.width = 3
     
     for idx, row in df_opt.iterrows():
-        # En el KML de optimizada mostramos el orden sugerido
         pnt = fol_opt.newpoint(name=f"#{idx+1} (Sugerido)", coords=[(row['longitud'], row['latitud'])])
         
     return kml.kml()
@@ -154,88 +158,95 @@ if archivo:
             fecha = st.selectbox("Fecha", sorted(fechas))
             
         ruta_real = df[(df['vendedor'] == vendedor) & (df['fecha_solo'] == fecha)].sort_values(by='fecha_hora').reset_index(drop=True)
-        
-        # Asignamos el orden original (1, 2, 3...)
         ruta_real['orden_original'] = range(1, len(ruta_real) + 1)
         
         if len(ruta_real) > 1:
             ruta_optima_raw = optimizar_ruta_vecino(ruta_real)
-            
-            # Asignamos orden sugerido (es simplemente el nuevo índice + 1)
             ruta_optima_raw['orden_sugerido'] = range(1, len(ruta_optima_raw) + 1)
             
             km_real, min_real, df_real_final = calcular_metricas(ruta_real, velocidad_promedio)
             km_opt, min_opt, df_opt_final = calcular_metricas(ruta_optima_raw, velocidad_promedio)
             
-            # Métricas
             st.divider()
             m1, m2, m3, m4 = st.columns(4)
             m1.metric("📏 Distancia Real", f"{km_real:.2f} km")
             m2.metric("🎯 Distancia Óptima", f"{km_opt:.2f} km")
-            m3.metric("💰 Ahorro", f"{km_real - km_opt:.2f} km", delta_color="normal")
-            m4.metric("⏱️ Tiempo Ahorrado", f"{min_real - min_opt:.0f} min", delta_color="normal")
+            m3.metric("💰 Ahorro", f"{km_real - km_opt:.2f} km")
+            m4.metric("⏱️ Tiempo Ahorrado", f"{min_real - min_opt:.0f} min")
             st.divider()
 
-            # --- MAPA CON FILTROS ---
+            # --- MAPA ---
             m = folium.Map(location=[ruta_real.iloc[0]['latitud'], ruta_real.iloc[0]['longitud']], zoom_start=14)
             
-            # 1. Dibujar Líneas según filtros
             if ver_original:
                 puntos_real = list(zip(ruta_real['latitud'], ruta_real['longitud']))
-                folium.PolyLine(
-                    puntos_real, color="red", weight=4, opacity=0.6, tooltip="Trayecto Real (Orden Cronológico)"
-                ).add_to(m)
+                folium.PolyLine(puntos_real, color="red", weight=4, opacity=0.4, tooltip="Original").add_to(m)
                 
             if ver_optimizado:
                 puntos_opt = list(zip(ruta_optima_raw['latitud'], ruta_optima_raw['longitud']))
-                folium.PolyLine(
-                    puntos_opt, color="green", weight=4, opacity=0.8, dash_array='5, 10', tooltip="Trayecto Sugerido (Optimizado)"
-                ).add_to(m)
+                folium.PolyLine(puntos_opt, color="green", weight=4, opacity=0.6, dash_array='5, 10', tooltip="Sugerido").add_to(m)
             
-            # 2. Dibujar Marcadores (Usamos el DF Optimizado porque tiene ambos datos: orden orig y sug)
-            # Nota: Los puntos geográficos son los mismos en ambos DF, solo cambia el orden.
+            # --- MARCADORES PERSONALIZADOS (NUMEROS) ---
             for i, row in df_opt_final.iterrows():
                 
-                # Diseño del Tooltip (Lo que se ve al pasar el mouse)
-                texto_tooltip = f"#{row['orden_original']} (Orig) ➡️ #{row['orden_sugerido']} (Sug)"
+                # Definir qué número y color usar según la selección del usuario
+                if "Sugerido" in tipo_etiqueta:
+                    numero_mostrar = row['orden_sugerido']
+                    color_fondo = "#28a745" # Verde
+                else:
+                    numero_mostrar = row['orden_original']
+                    color_fondo = "#dc3545" # Rojo
                 
-                # Diseño del Popup (Lo que se ve al hacer clic)
-                texto_popup = f"""
-                <div style="font-family: sans-serif; min-width: 200px;">
-                    <h4 style="margin-bottom: 5px;">{row['cliente']}</h4>
-                    <b>📍 Secuencia:</b><br>
-                    • Orden Real: <b>{row['orden_original']}</b><br>
-                    • Orden Sugerido: <b>{row['orden_sugerido']}</b><br>
-                    <hr>
-                    <b>🕒 Horario:</b> {row['fecha_hora'].time()}<br>
-                    <b>🚗 Viaje est.:</b> {row['min_tramo']:.1f} min
+                # HTML para el circulo con numero
+                html_icono = f"""
+                <div style="
+                    background-color: {color_fondo};
+                    color: white;
+                    border-radius: 50%;
+                    width: 30px;
+                    height: 30px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-weight: bold;
+                    font-family: Arial, sans-serif;
+                    border: 2px solid white;
+                    box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+                    font-size: 14px;
+                ">
+                    {numero_mostrar}
                 </div>
                 """
                 
-                # Icono: Azul si el orden coincide, Naranja si cambió drásticamente
-                color_icono = "blue" if row['orden_original'] == row['orden_sugerido'] else "orange"
+                texto_popup = f"""
+                <div style="font-family: sans-serif; min-width: 200px;">
+                    <h4 style="margin:0;">{row['cliente']}</h4>
+                    <hr style="margin: 5px 0;">
+                    <b>Orden Real:</b> {row['orden_original']}<br>
+                    <b>Orden Sugerido:</b> {row['orden_sugerido']}<br>
+                    <b>Hora:</b> {row['fecha_hora'].time()}
+                </div>
+                """
                 
                 folium.Marker(
-                    [row['latitud'], row['longitud']],
-                    popup=folium.Popup(texto_popup, max_width=300),
-                    tooltip=texto_tooltip,
-                    icon=folium.Icon(color=color_icono, icon="user", prefix="fa")
+                    location=[row['latitud'], row['longitud']],
+                    popup=folium.Popup(texto_popup, max_width=250),
+                    tooltip=f"Cliente: {row['cliente']}",
+                    icon=DivIcon(
+                        icon_size=(30,30),
+                        icon_anchor=(15,15),
+                        html=html_icono
+                    )
                 ).add_to(m)
 
             st_folium(m, width=1200, height=500)
             
-            # --- TABLA COMPARATIVA ---
             st.subheader("📊 Comparación de Secuencias")
-            # Unimos la info para mostrar una sola tabla limpia
-            # Mostramos el orden sugerido como índice principal
             df_display = df_opt_final[['orden_sugerido', 'orden_original', 'cliente', 'fecha_hora', 'dist_tramo']].copy()
-            df_display.columns = ['Orden Sugerido', 'Orden Real', 'Cliente', 'Hora Visita Real', 'Dist. Tramo (km)']
-            
             st.dataframe(df_display, use_container_width=True, hide_index=True)
             
-            # --- DESCARGA ---
             kml_data = generar_kml(ruta_real, df_opt_final, vendedor, fecha)
             st.download_button("📥 Descargar KML", kml_data, f"Ruta_{vendedor}.kml")
             
         else:
-            st.warning("Datos insuficientes para la fecha seleccionada.")
+            st.warning("Datos insuficientes.")
