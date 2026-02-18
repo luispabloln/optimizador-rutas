@@ -17,8 +17,8 @@ st.title("📊 Auditoría de Rutas y Efectividad")
 def asignar_canal(nombre):
     """Clasifica al vendedor según el Canal."""
     nombre = str(nombre).upper()
-    # Lista de nombres para canal MZO
-    mzo_keywords = ['ABDY', 'MARCIA', 'JESUS', 'KEVIN', 'MARIBEL']
+    # Lista actualizada de nombres para canal MZO
+    mzo_keywords = ['ABDY', 'MARCIA', 'JESUS', 'KEVIN', 'MARIBEL', 'LUIS PABLO']
     if any(keyword in nombre for keyword in mzo_keywords):
         return 'MZO'
     else:
@@ -150,7 +150,6 @@ if archivo:
                                 color="green", weight=4, opacity=0.7, dash_array='5, 10', tooltip="Ruta Sugerida").add_to(m)
             
             for _, row in ruta_optima.iterrows():
-                # Lógica de número y color
                 num = row['orden_sugerido'] if "Sugerido" in tipo_etiqueta else row['orden_original']
                 color = "#28a745" if "Sugerido" in tipo_etiqueta else "#dc3545"
                 icon_v = "✅" if row['tipo'] == 'PreVenta' else "❌"
