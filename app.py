@@ -243,3 +243,4 @@ if df is not None:
             st.dataframe(res_df.style.background_gradient(subset=['Desvío (Km)'], cmap='YlOrRd'), use_container_width=True)
         else:
             st.info("No hay suficientes datos comparativos para esta fecha.")
+
