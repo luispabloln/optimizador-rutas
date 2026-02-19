@@ -5,3 +5,4 @@ streamlit-folium
 simplekml
 scipy
 openpyxl
+plotly
