@@ -10,6 +10,7 @@ import math
 import plotly.express as px
 
 # --- CONFIGURACIÓN DE CARGA AUTOMÁTICA DESDE GITHUB ---
+# Se utiliza la URL Raw proporcionada para la carga directa
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/luispabloln/optimizador-rutas/refs/heads/main/clientes%20atendidos.csv"
 
 # --- ESTILO LOOKER STUDIO (CSS) ---
@@ -82,21 +83,14 @@ def cargar_datos(source):
         df = df.dropna(subset=['latitud', 'longitud'])
         
         df['canal'] = df['vendedor'].apply(asignar_canal)
-        
-        # CORRECCIÓN DE PARSEO DE FECHA: Se agrega dayfirst=True para evitar meses fantasma (01/12 -> 12/01)
         if 'fecha' in df.columns and 'hora' in df.columns:
-            df['fecha_hora'] = pd.to_datetime(df['fecha'].astype(str) + ' ' + df['hora'].astype(str), dayfirst=True, errors='coerce')
+            df['fecha_hora'] = pd.to_datetime(df['fecha'].astype(str) + ' ' + df['hora'].astype(str), errors='coerce')
         else:
-            df['fecha_hora'] = pd.to_datetime(df['fecha'], dayfirst=True, errors='coerce')
+            df['fecha_hora'] = pd.to_datetime(df['fecha'], errors='coerce')
         
         df = df.dropna(subset=['fecha_hora'])
         df['fecha_solo'] = df['fecha_hora'].dt.date
         df['mes'] = df['fecha_hora'].dt.strftime('%Y-%m')
-        
-        # Limpieza de espacios en blanco en columnas de texto críticas
-        if 'tipo' in df.columns:
-            df['tipo'] = df['tipo'].astype(str).str.strip()
-            
         return df
     except Exception as e:
         st.error(f"Error al cargar datos: {e}")
@@ -126,11 +120,9 @@ if df is not None:
         st.header("⚙️ Configuración Global")
         canal_sel = st.selectbox("Canal de Venta", ["MZO", "TDB"])
         
-        # Filtro por Mes
         meses_disponibles = sorted(df['mes'].unique(), reverse=True)
         mes_sel = st.selectbox("Seleccionar Mes", meses_disponibles)
         
-        # Filtrar datos por mes seleccionado
         df_filtrado_mes = df[df['mes'] == mes_sel]
         
         fechas_disponibles = sorted(df_filtrado_mes['fecha_solo'].unique(), reverse=True)
@@ -175,21 +167,35 @@ if df is not None:
                 if ver_opt:
                     folium.PolyLine(list(zip(ruta_optima['latitud'], ruta_optima['longitud'])), color="#27ae60", weight=5, opacity=0.7, dash_array='8, 8').add_to(m)
                 
-                for _, row in ruta_optima.iterrows():
+                # Bucle para marcadores con cálculo de tiempo transcurrido
+                prev_time = None
+                for i, row in ruta_optima.iterrows():
                     num = row['orden_sugerido'] if tipo_num == "Sugerido" else row['orden_original']
                     color = "#27ae60" if tipo_num == "Sugerido" else "#e74c3c"
                     icon_v = "✅" if str(row.get('tipo', '')).lower() == 'preventa' else "❌"
                     
+                    # Cálculo de tiempo transcurrido
+                    if i == 0:
+                        tiempo_transcurrido = "Primer punto"
+                    else:
+                        diff = row['fecha_hora'] - prev_time
+                        horas, rem = divmod(diff.total_seconds(), 3600)
+                        minutos, segundos = divmod(rem, 60)
+                        tiempo_transcurrido = f"{int(horas)}h {int(minutos)}m" if horas > 0 else f"{int(minutos)} min"
+                    
+                    prev_time = row['fecha_hora']
+                    
                     html_icon = f"""<div style="background:{color};color:white;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-weight:bold;border:2px solid white;font-size:11px;box-shadow: 0 2px 4px rgba(0,0,0,0.2);">{num}</div>"""
                     
-                    texto_tooltip = f"{icon_v} {row['cliente']} | Orig: #{row['orden_original']} ➡️ Sug: #{row['orden_sugerido']}"
+                    texto_tooltip = f"{icon_v} {row['cliente']} | Hora: {row['fecha_hora'].strftime('%H:%M')} | Transcurrido: {tiempo_transcurrido}"
                     
                     texto_popup = f"""
                     <div style="font-family: sans-serif; min-width: 180px;">
                         <h4 style="margin:0;">{row['cliente']}</h4>
                         <hr style="margin:5px 0;">
                         <b>Estado:</b> {row.get('tipo', 'N/A')}<br>
-                        <b>Hora Real:</b> {row['fecha_hora'].strftime('%H:%M')}<br>
+                        <b>Hora Visita:</b> {row['fecha_hora'].strftime('%H:%M:%S')}<br>
+                        <b>Tiempo desde anterior:</b> {tiempo_transcurrido}<br>
                         <b>Orden Real:</b> {row['orden_original']}<br>
                         <b>Orden Sugerido:</b> {row['orden_sugerido']}<br>
                         <b>Monto:</b> {row.get('monto', 0)}
@@ -243,4 +249,3 @@ if df is not None:
             st.dataframe(res_df.style.background_gradient(subset=['Desvío (Km)'], cmap='YlOrRd'), use_container_width=True)
         else:
             st.info("No hay suficientes datos comparativos para esta fecha.")
-
