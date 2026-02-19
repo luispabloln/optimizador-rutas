@@ -10,7 +10,6 @@ import math
 import plotly.express as px
 
 # --- CONFIGURACIÓN DE CARGA AUTOMÁTICA DESDE GITHUB ---
-# Sustituye esta URL por el enlace "Raw" de tu archivo en GitHub
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/luispabloln/optimizador-rutas/refs/heads/main/clientes%20atendidos.csv"
 
 # --- ESTILO LOOKER STUDIO (CSS) ---
@@ -38,7 +37,6 @@ st.markdown("""
 
 def asignar_canal(nombre):
     nombre = str(nombre).upper()
-    # Luis Pablo asignado a MZO
     mzo_keywords = ['ABDY', 'MARCIA', 'JESUS', 'KEVIN', 'MARIBEL', 'LUIS PABLO']
     if any(keyword in nombre for keyword in mzo_keywords):
         return 'MZO'
@@ -65,7 +63,6 @@ def calc_total_km(df_temp):
 
 def cargar_datos(source):
     try:
-        # Detecta si el source es una URL de GitHub o un objeto de subida
         if isinstance(source, str):
             df = pd.read_csv(source) if source.endswith('.csv') else pd.read_excel(source)
         else:
@@ -74,7 +71,6 @@ def cargar_datos(source):
         df.columns = df.columns.str.strip().str.lower()
         df = df.rename(columns={'empleado': 'vendedor', 'lat': 'latitud', 'lon': 'longitud'})
         
-        # Limpieza de coordenadas para evitar errores en el mapa
         df['latitud'] = pd.to_numeric(df['latitud'], errors='coerce')
         df['longitud'] = pd.to_numeric(df['longitud'], errors='coerce')
         df = df.dropna(subset=['latitud', 'longitud'])
@@ -107,7 +103,6 @@ def optimizar_ruta_vecino(df_ruta):
 
 st.title("📍 Dashboard de Auditoría GPS Pro")
 
-# Carga automática desde GitHub
 df = cargar_datos(GITHUB_RAW_URL)
 
 if df is not None:
@@ -218,4 +213,3 @@ if df is not None:
             st.dataframe(res_df.style.background_gradient(subset=['Desvío (Km)'], cmap='YlOrRd'), use_container_width=True)
         else:
             st.info("No hay suficientes datos comparativos para esta fecha.")
-
