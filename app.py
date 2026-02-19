@@ -174,4 +174,37 @@ if archivo:
                             icon=DivIcon(icon_size=(26,26), icon_anchor=(13,13), html=html_icon)
                         ).add_to(m)
                     
-                    st_fol
+                    st_folium(m, width="100%", height=550)
+                
+                kml = simplekml.Kml()
+                for _, r in ruta_optima.iterrows():
+                    kml.newpoint(name=f"#{r['orden_sugerido']} {r['cliente']}", coords=[(r['longitud'], r['latitud'])])
+                st.download_button("📥 Descargar KML", kml.kml(), f"Ruta_{vendedor_sel}.kml")
+            else:
+                st.warning("Sin datos para este vendedor en esta fecha.")
+
+        with tab2:
+            st.subheader(f"📊 Desempeño Comparativo: Canal {canal_sel}")
+            vendedores_canal = df[(df['canal'] == canal_sel) & (df['fecha_solo'] == fecha_sel)]['vendedor'].unique()
+            resumen_data = []
+
+            for v in vendedores_canal:
+                d_v = df[(df['vendedor'] == v) & (df['fecha_solo'] == fecha_sel)].sort_values('fecha_hora')
+                if len(d_v) > 1:
+                    km_real = calc_total_km(d_v)
+                    km_opt = calc_total_km(optimizar_ruta_vecino(d_v))
+                    efectividad = (len(d_v[d_v['tipo'].str.lower() == 'preventa']) / len(d_v)) * 100
+                    resumen_data.append({
+                        "Vendedor": v,
+                        "Km Real": round(km_real, 2),
+                        "Desvío (Km)": round(km_real - km_opt, 2),
+                        "Efectividad (%)": round(efectividad, 1)
+                    })
+            
+            if resumen_data:
+                res_df = pd.DataFrame(resumen_data).sort_values("Desvío (Km)", ascending=False)
+                fig = px.bar(res_df, x="Vendedor", y="Desvío (Km)", color="Desvío (Km)", color_continuous_scale="Reds")
+                st.plotly_chart(fig, use_container_width=True)
+                st.dataframe(res_df.style.background_gradient(subset=['Desvío (Km)'], cmap='YlOrRd'), use_container_width=True)
+            else:
+                st.info("No hay suficientes datos comparativos para esta fecha.")
