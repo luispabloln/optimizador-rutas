@@ -11,7 +11,7 @@ import plotly.express as px
 
 # --- CONFIGURACIÓN DE CARGA AUTOMÁTICA DESDE GITHUB ---
 # Sustituye esta URL por el enlace "Raw" de tu archivo en GitHub
-GITHUB_RAW_URL = "https://raw.githubusercontent.com/tu_usuario/tu_repositorio/main/tu_archivo.csv"
+GITHUB_RAW_URL = "https://raw.githubusercontent.com/luispabloln/optimizador-rutas/refs/heads/main/clientes%20atendidos.csv"
 
 # --- ESTILO LOOKER STUDIO (CSS) ---
 st.set_page_config(page_title="Auditoría GPS Pro", layout="wide", page_icon="📊")
@@ -218,3 +218,4 @@ if df is not None:
             st.dataframe(res_df.style.background_gradient(subset=['Desvío (Km)'], cmap='YlOrRd'), use_container_width=True)
         else:
             st.info("No hay suficientes datos comparativos para esta fecha.")
+
