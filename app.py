@@ -82,14 +82,16 @@ def cargar_datos(source):
         df = df.dropna(subset=['latitud', 'longitud'])
         
         df['canal'] = df['vendedor'].apply(asignar_canal)
+        
+        # CORRECCIÓN DE FILTRO DE MES: Se fuerza el parseo con dayfirst=True para evitar interpretaciones incorrectas del formato DD/MM/AAAA
         if 'fecha' in df.columns and 'hora' in df.columns:
-            df['fecha_hora'] = pd.to_datetime(df['fecha'].astype(str) + ' ' + df['hora'].astype(str), errors='coerce')
+            df['fecha_hora'] = pd.to_datetime(df['fecha'].astype(str) + ' ' + df['hora'].astype(str), dayfirst=True, errors='coerce')
         else:
-            df['fecha_hora'] = pd.to_datetime(df['fecha'], errors='coerce')
+            df['fecha_hora'] = pd.to_datetime(df['fecha'], dayfirst=True, errors='coerce')
         
         df = df.dropna(subset=['fecha_hora'])
         df['fecha_solo'] = df['fecha_hora'].dt.date
-        df['mes'] = df['fecha_hora'].dt.strftime('%Y-%m')
+        df['mes'] = df['fecha_hora'].dt.strftime('%m-%Y') 
         return df
     except Exception as e:
         st.error(f"Error al cargar datos: {e}")
@@ -119,9 +121,11 @@ if df is not None:
         st.header("⚙️ Configuración Global")
         canal_sel = st.selectbox("Canal de Venta", ["MZO", "TDB"])
         
+        # Filtro por Mes: Se filtran los meses reales detectados tras el parseo corregido
         meses_disponibles = sorted(df['mes'].unique(), reverse=True)
         mes_sel = st.selectbox("Seleccionar Mes", meses_disponibles)
         
+        # Filtrar datos por mes seleccionado antes de mostrar fechas
         df_filtrado_mes = df[df['mes'] == mes_sel]
         
         fechas_disponibles = sorted(df_filtrado_mes['fecha_solo'].unique(), reverse=True)
@@ -166,7 +170,7 @@ if df is not None:
                 if ver_opt:
                     folium.PolyLine(list(zip(ruta_optima['latitud'], ruta_optima['longitud'])), color="#27ae60", weight=5, opacity=0.7, dash_array='8, 8').add_to(m)
                 
-                # Cálculo de conteo de visitas por cliente para identificar duplicados
+                # Cálculo de visitas duplicadas
                 conteo_visitas = ruta_optima['cliente'].value_counts()
                 
                 prev_time = None
@@ -175,7 +179,6 @@ if df is not None:
                     color = "#27ae60" if tipo_num == "Sugerido" else "#e74c3c"
                     icon_v = "✅" if str(row.get('tipo', '')).lower() == 'preventa' else "❌"
                     
-                    # Identificar si es duplicado
                     visitas_totales = conteo_visitas[row['cliente']]
                     borde_estilo = "border: 3px solid #FFD700;" if visitas_totales > 1 else "border: 2px solid white;"
                     indicador_duplicado = f"⚠️ [Atendido {visitas_totales} veces] " if visitas_totales > 1 else ""
@@ -185,7 +188,7 @@ if df is not None:
                     else:
                         diff = row['fecha_hora'] - prev_time
                         horas, rem = divmod(diff.total_seconds(), 3600)
-                        minutos, segundos = divmod(rem, 60)
+                        minutos, _ = divmod(rem, 60)
                         tiempo_transcurrido = f"{int(horas)}h {int(minutos)}m" if horas > 0 else f"{int(minutos)} min"
                     
                     prev_time = row['fecha_hora']
