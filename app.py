@@ -10,7 +10,6 @@ import math
 import plotly.express as px
 
 # --- CONFIGURACIÓN DE CARGA AUTOMÁTICA DESDE GITHUB ---
-# Se utiliza la URL Raw proporcionada para la carga directa
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/luispabloln/optimizador-rutas/refs/heads/main/clientes%20atendidos.csv"
 
 # --- ESTILO LOOKER STUDIO (CSS) ---
@@ -133,8 +132,8 @@ if df is not None:
     tab1, tab2 = st.tabs(["👤 Auditoría Individual", "🏢 Análisis de Canal"])
 
     with tab1:
-        vendedores_filtrados = sorted(df_filtrado_mes[df_filtrado_mes['canal'] == canal_sel]['vendedor'].unique())
-        vendedor_sel = st.selectbox("Seleccionar Empleado", vendedores_filtrados)
+        v_filtrados = sorted(df_filtrado_mes[df_filtrado_mes['canal'] == canal_sel]['vendedor'].unique())
+        vendedor_sel = st.selectbox("Seleccionar Empleado", v_filtrados)
         
         df_vend = df_filtrado_mes[(df_filtrado_mes['vendedor'] == vendedor_sel) & (df_filtrado_mes['fecha_solo'] == fecha_sel)].sort_values('fecha_hora').reset_index(drop=True)
         
@@ -167,14 +166,20 @@ if df is not None:
                 if ver_opt:
                     folium.PolyLine(list(zip(ruta_optima['latitud'], ruta_optima['longitud'])), color="#27ae60", weight=5, opacity=0.7, dash_array='8, 8').add_to(m)
                 
-                # Bucle para marcadores con cálculo de tiempo transcurrido
+                # Cálculo de conteo de visitas por cliente para identificar duplicados
+                conteo_visitas = ruta_optima['cliente'].value_counts()
+                
                 prev_time = None
                 for i, row in ruta_optima.iterrows():
                     num = row['orden_sugerido'] if tipo_num == "Sugerido" else row['orden_original']
                     color = "#27ae60" if tipo_num == "Sugerido" else "#e74c3c"
                     icon_v = "✅" if str(row.get('tipo', '')).lower() == 'preventa' else "❌"
                     
-                    # Cálculo de tiempo transcurrido
+                    # Identificar si es duplicado
+                    visitas_totales = conteo_visitas[row['cliente']]
+                    borde_estilo = "border: 3px solid #FFD700;" if visitas_totales > 1 else "border: 2px solid white;"
+                    indicador_duplicado = f"⚠️ [Atendido {visitas_totales} veces] " if visitas_totales > 1 else ""
+
                     if i == 0:
                         tiempo_transcurrido = "Primer punto"
                     else:
@@ -185,14 +190,15 @@ if df is not None:
                     
                     prev_time = row['fecha_hora']
                     
-                    html_icon = f"""<div style="background:{color};color:white;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-weight:bold;border:2px solid white;font-size:11px;box-shadow: 0 2px 4px rgba(0,0,0,0.2);">{num}</div>"""
+                    html_icon = f"""<div style="background:{color};color:white;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-weight:bold;{borde_estilo}font-size:11px;box-shadow: 0 2px 4px rgba(0,0,0,0.2);">{num}</div>"""
                     
-                    texto_tooltip = f"{icon_v} {row['cliente']} | Orig: #{row['orden_original']} | Sug: #{row['orden_sugerido']} | Hora: {row['fecha_hora'].strftime('%H:%M')} | Trans: {tiempo_transcurrido}"
+                    texto_tooltip = f"{indicador_duplicado}{icon_v} {row['cliente']} | Orig: #{row['orden_original']} | Sug: #{row['orden_sugerido']} | Hora: {row['fecha_hora'].strftime('%H:%M')} | Trans: {tiempo_transcurrido}"
                     
                     texto_popup = f"""
                     <div style="font-family: sans-serif; min-width: 180px;">
                         <h4 style="margin:0;">{row['cliente']}</h4>
                         <hr style="margin:5px 0;">
+                        <b style="color:red;">{indicador_duplicado}</b><br>
                         <b>Estado:</b> {row.get('tipo', 'N/A')}<br>
                         <b>Hora Visita:</b> {row['fecha_hora'].strftime('%H:%M:%S')}<br>
                         <b>Tiempo desde anterior:</b> {tiempo_transcurrido}<br>
