@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import folium
 from folium.features import DivIcon
+from folium.plugins import Fullscreen  # <--- Nuevo import para pantalla completa
 from streamlit_folium import st_folium
 from scipy.spatial.distance import cdist
 import simplekml
@@ -12,10 +13,7 @@ st.set_page_config(page_title="Auditoría GPS Pro", layout="wide", page_icon="�
 
 st.markdown("""
     <style>
-    /* Fondo general */
     .main { background-color: #f8f9fa; }
-    
-    /* Estilo de las tarjetas de métricas */
     [data-testid="stMetric"] {
         background-color: #ffffff;
         border: 1px solid #e0e4e8;
@@ -23,23 +21,12 @@ st.markdown("""
         border-radius: 10px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
-    
-    /* Títulos y fuentes */
-    h1, h2, h3 { color: #1c2b39; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-    
-    /* Botón de descarga personalizado */
+    h1, h2, h3 { color: #1c2b39; font-family: 'Segoe UI', sans-serif; }
     .stButton>button {
         border-radius: 20px;
         border: 1px solid #007bff;
         color: #007bff;
-        transition: all 0.3s;
     }
-    .stButton>button:hover {
-        background-color: #007bff;
-        color: white;
-    }
-    
-    /* Sidebar styling */
     section[data-testid="stSidebar"] {
         background-color: #ffffff;
         border-right: 1px solid #e0e4e8;
@@ -47,10 +34,11 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- FUNCIONES DE LÓGICA (Sin cambios) ---
+# --- FUNCIONES DE LÓGICA ---
 
 def asignar_canal(nombre):
     nombre = str(nombre).upper()
+    # Luis Pablo agregado a MZO según tu requerimiento
     mzo_keywords = ['ABDY', 'MARCIA', 'JESUS', 'KEVIN', 'MARIBEL', 'LUIS PABLO']
     return 'MZO' if any(keyword in nombre for keyword in mzo_keywords) else 'TDB'
 
@@ -110,7 +98,7 @@ if archivo:
             fecha_sel = st.selectbox("Fecha de Auditoría", fechas_vendedor)
             
             st.divider()
-            st.subheader("Mapa")
+            st.subheader("Configuración Mapa")
             ver_original = st.checkbox("Ver Línea Real (Rojo)", value=True)
             ver_optimizado = st.checkbox("Ver Línea Sugerida (Verde)", value=True)
             tipo_etiqueta = st.radio("Número en punto:", ["Orden Sugerido", "Orden Original"])
@@ -129,9 +117,9 @@ if archivo:
         # --- DASHBOARD METRICS ---
         st.subheader(f"📈 Resultados: {vendedor_sel} ({canal_sel})")
         m1, m2, m3 = st.columns(3)
-        m1.metric("Efectividad Canal", f"{efect_c:.1f}%")
+        m1.metric(f"Efectividad {canal_sel}", f"{efect_c:.1f}%")
         m2.metric("Efectividad Vendedor", f"{efect_v:.1f}%", delta=f"{efect_v - efect_c:.1f}% vs Canal")
-        m3.metric("Efectividad del Día", f"{efect_dia:.1f}%", f"{ventas_dia} visitas exitosas")
+        m3.metric("Efectividad del Día", f"{efect_dia:.1f}%", f"{ventas_dia} ventas hoy")
 
         if not ruta_real.empty:
             ruta_optima = optimizar_ruta_vecino(ruta_real)
@@ -152,9 +140,19 @@ if archivo:
             d2.metric("Km Sugeridos", f"{km_o:.2f} km")
             d3.metric("Ahorro Potencial", f"{km_r - km_o:.2f} km", f"{((km_r-km_o)/km_r*100 if km_r>0 else 0):.1f}%")
 
-            # --- MAPA ---
+            # --- MAPA CON FULLSCREEN ---
             st.markdown("<br>", unsafe_allow_html=True)
-            m = folium.Map(location=[ruta_real['latitud'].mean(), ruta_real['longitud'].mean()], zoom_start=14, tiles="cartodbpositron")
+            m = folium.Map(location=[ruta_real['latitud'].mean(), ruta_real['longitud'].mean()], 
+                           zoom_start=14, 
+                           tiles="cartodbpositron")
+            
+            # AGREGAR BOTÓN FULLSCREEN
+            Fullscreen(
+                position="topright",
+                title="Ver en Pantalla Completa",
+                title_cancel="Salir de Pantalla Completa",
+                force_separate_button=True
+            ).add_to(m)
             
             if ver_original:
                 folium.PolyLine(list(zip(ruta_real['latitud'], ruta_real['longitud'])), color="#e74c3c", weight=3, opacity=0.4).add_to(m)
@@ -189,4 +187,4 @@ if archivo:
             
             st.dataframe(ruta_optima[['orden_sugerido', 'orden_original', 'cliente', 'tipo', 'monto']], use_container_width=True)
         else:
-            st.warning("No se encontraron registros para este vendedor en la fecha seleccionada.")
+            st.warning("No hay datos para la fecha seleccionada.")
