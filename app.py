@@ -10,7 +10,6 @@ import math
 import plotly.express as px
 
 # --- CONFIGURACIÓN DE CARGA AUTOMÁTICA DESDE GITHUB ---
-# Se utiliza la URL Raw proporcionada para la carga directa
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/luispabloln/optimizador-rutas/refs/heads/main/clientes%20atendidos.csv"
 
 # --- ESTILO LOOKER STUDIO (CSS) ---
@@ -64,7 +63,6 @@ def calc_total_km(df_temp):
 
 def cargar_datos(source):
     try:
-        # Soporte para detección automática de separadores en CSV y carga desde URL/GitHub
         if isinstance(source, str):
             if source.endswith('.csv'):
                 df = pd.read_csv(source, sep=None, engine='python', on_bad_lines='skip')
@@ -91,6 +89,8 @@ def cargar_datos(source):
         
         df = df.dropna(subset=['fecha_hora'])
         df['fecha_solo'] = df['fecha_hora'].dt.date
+        # Creación de columna para filtro por mes
+        df['mes'] = df['fecha_hora'].dt.strftime('%Y-%m')
         return df
     except Exception as e:
         st.error(f"Error al cargar datos: {e}")
@@ -113,14 +113,21 @@ def optimizar_ruta_vecino(df_ruta):
 
 st.title("📍 Dashboard de Auditoría GPS Pro")
 
-# Carga automática desde GitHub para evitar subida manual
 df = cargar_datos(GITHUB_RAW_URL)
 
 if df is not None:
     with st.sidebar:
         st.header("⚙️ Configuración Global")
         canal_sel = st.selectbox("Canal de Venta", ["MZO", "TDB"])
-        fechas_disponibles = sorted(df['fecha_solo'].unique(), reverse=True)
+        
+        # Filtro por Mes
+        meses_disponibles = sorted(df['mes'].unique(), reverse=True)
+        mes_sel = st.selectbox("Seleccionar Mes", meses_disponibles)
+        
+        # Filtrar datos por mes seleccionado antes de mostrar fechas
+        df_filtrado_mes = df[df['mes'] == mes_sel]
+        
+        fechas_disponibles = sorted(df_filtrado_mes['fecha_solo'].unique(), reverse=True)
         fecha_sel = st.selectbox("Fecha de Auditoría", fechas_disponibles)
         st.divider()
         velocidad = st.slider("Velocidad (km/h)", 10, 60, 25)
@@ -128,10 +135,10 @@ if df is not None:
     tab1, tab2 = st.tabs(["👤 Auditoría Individual", "🏢 Análisis de Canal"])
 
     with tab1:
-        vendedores_filtrados = sorted(df[df['canal'] == canal_sel]['vendedor'].unique())
+        vendedores_filtrados = sorted(df_filtrado_mes[df_filtrado_mes['canal'] == canal_sel]['vendedor'].unique())
         vendedor_sel = st.selectbox("Seleccionar Empleado", vendedores_filtrados)
         
-        df_vend = df[(df['vendedor'] == vendedor_sel) & (df['fecha_solo'] == fecha_sel)].sort_values('fecha_hora').reset_index(drop=True)
+        df_vend = df_filtrado_mes[(df_filtrado_mes['vendedor'] == vendedor_sel) & (df_filtrado_mes['fecha_solo'] == fecha_sel)].sort_values('fecha_hora').reset_index(drop=True)
         
         if not df_vend.empty:
             ruta_real = df_vend.copy()
@@ -201,11 +208,11 @@ if df is not None:
 
     with tab2:
         st.subheader(f"📊 Desempeño Comparativo: Canal {canal_sel}")
-        vendedores_canal = df[(df['canal'] == canal_sel) & (df['fecha_solo'] == fecha_sel)]['vendedor'].unique()
+        vendedores_canal = df_filtrado_mes[(df_filtrado_mes['canal'] == canal_sel) & (df_filtrado_mes['fecha_solo'] == fecha_sel)]['vendedor'].unique()
         resumen_data = []
 
         for v in vendedores_canal:
-            d_v = df[(df['vendedor'] == v) & (df['fecha_solo'] == fecha_sel)].sort_values('fecha_hora')
+            d_v = df_filtrado_mes[(df_filtrado_mes['vendedor'] == v) & (df_filtrado_mes['fecha_solo'] == fecha_sel)].sort_values('fecha_hora')
             if len(d_v) > 1:
                 km_real = calc_total_km(d_v)
                 km_opt = calc_total_km(optimizar_ruta_vecino(d_v))
