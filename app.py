@@ -34,8 +34,12 @@ st.markdown("""
 
 def asignar_canal(nombre):
     nombre = str(nombre).upper()
+    # Luis Pablo asignado a MZO
     mzo_keywords = ['ABDY', 'MARCIA', 'JESUS', 'KEVIN', 'MARIBEL', 'LUIS PABLO']
-    return 'MZO' if any(keyword in nombre for keyword in mzo_keywords) else 'TDB'
+    if any(keyword in nombre for keyword in mzo_keywords):
+        return 'MZO'
+    else:
+        return 'TDB'
 
 def haversine(lat1, lon1, lat2, lon2):
     try:
@@ -61,7 +65,7 @@ def cargar_datos(uploaded_file):
         df.columns = df.columns.str.strip().str.lower()
         df = df.rename(columns={'empleado': 'vendedor', 'lat': 'latitud', 'lon': 'longitud'})
         
-        # Limpieza de coordenadas
+        # Limpieza de coordenadas para evitar errores en el mapa
         df['latitud'] = pd.to_numeric(df['latitud'], errors='coerce')
         df['longitud'] = pd.to_numeric(df['longitud'], errors='coerce')
         df = df.dropna(subset=['latitud', 'longitud'])
@@ -123,10 +127,10 @@ if archivo:
                 
                 km_r, km_o = calc_total_km(ruta_real), calc_total_km(ruta_optima)
                 
-                c1, c2, c3 = st.columns(3)
-                c1.metric("Km Recorridos", f"{km_r:.2f} km")
-                c2.metric("Km Sugeridos", f"{km_o:.2f} km")
-                c3.metric("Ahorro Potencial", f"{km_r - km_o:.2f} km", f"{((km_r-km_o)/km_r*100 if km_r>0 else 0):.1f}%")
+                c_met1, c_met2, c_met3 = st.columns(3)
+                c_met1.metric("Km Recorridos", f"{km_r:.2f} km")
+                c_met2.metric("Km Sugeridos", f"{km_o:.2f} km")
+                c_met3.metric("Ahorro Potencial", f"{km_r - km_o:.2f} km", f"{((km_r-km_o)/km_r*100 if km_r>0 else 0):.1f}%")
 
                 col_map1, col_map2 = st.columns([4, 1])
                 with col_map2:
@@ -149,10 +153,8 @@ if archivo:
                         color = "#27ae60" if tipo_num == "Sugerido" else "#e74c3c"
                         icon_v = "✅" if str(row['tipo']).lower() == 'preventa' else "❌"
                         
-                        # Icono personalizado
                         html_icon = f"""<div style="background:{color};color:white;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-weight:bold;border:2px solid white;font-size:11px;box-shadow: 0 2px 4px rgba(0,0,0,0.2);">{num}</div>"""
                         
-                        # --- DATOS DEL GLOBO FLOTANTE (RESTAURADO) ---
                         texto_tooltip = f"{icon_v} {row['cliente']} | Orig: #{row['orden_original']} ➡️ Sug: #{row['orden_sugerido']}"
                         
                         texto_popup = f"""
@@ -174,6 +176,7 @@ if archivo:
                             icon=DivIcon(icon_size=(26,26), icon_anchor=(13,13), html=html_icon)
                         ).add_to(m)
                     
+                    # Línea 177: Corregida de st_fol a st_folium
                     st_folium(m, width="100%", height=550)
                 
                 kml = simplekml.Kml()
