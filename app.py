@@ -27,15 +27,6 @@ st.markdown("""
         background-color: #ffffff;
         border-right: 1px solid #e0e4e8;
     }
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 10px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        background-color: #ffffff;
-        border: 1px solid #e0e4e8;
-        border-radius: 5px 5px 0px 0px;
-        padding: 10px 20px;
-    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -43,6 +34,7 @@ st.markdown("""
 
 def asignar_canal(nombre):
     nombre = str(nombre).upper()
+    # Luis Pablo en MZO según requerimiento
     mzo_keywords = ['ABDY', 'MARCIA', 'JESUS', 'KEVIN', 'MARIBEL', 'LUIS PABLO']
     return 'MZO' if any(keyword in nombre for keyword in mzo_keywords) else 'TDB'
 
@@ -66,6 +58,10 @@ def cargar_datos(uploaded_file):
         df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
         df.columns = df.columns.str.strip().str.lower()
         df = df.rename(columns={'empleado': 'vendedor', 'lat': 'latitud', 'lon': 'longitud'})
+        
+        # --- LIMPIEZA DE NaNs (Solución al Error) ---
+        df = df.dropna(subset=['latitud', 'longitud'])
+        
         df['canal'] = df['vendedor'].apply(asignar_canal)
         if 'fecha' in df.columns and 'hora' in df.columns:
             df['fecha_hora'] = pd.to_datetime(df['fecha'].astype(str) + ' ' + df['hora'].astype(str))
@@ -99,7 +95,6 @@ if archivo:
     df = cargar_datos(archivo)
     
     if df is not None:
-        # Sidebar con Filtros Principales
         with st.sidebar:
             st.header("⚙️ Configuración Global")
             canal_sel = st.selectbox("Canal de Venta", ["MZO", "TDB"])
@@ -108,15 +103,12 @@ if archivo:
             st.divider()
             velocidad = st.slider("Velocidad (km/h)", 10, 60, 25)
 
-        # Crear Pestañas
         tab1, tab2 = st.tabs(["👤 Auditoría Individual", "🏢 Análisis de Canal"])
 
         with tab1:
-            # Filtros específicos para auditoría individual
             vendedores_filtrados = sorted(df[df['canal'] == canal_sel]['vendedor'].unique())
             vendedor_sel = st.selectbox("Seleccionar Empleado", vendedores_filtrados)
             
-            # Lógica de Auditoría Individual (Misma que antes)
             df_vend = df[(df['vendedor'] == vendedor_sel) & (df['fecha_solo'] == fecha_sel)].sort_values('fecha_hora').reset_index(drop=True)
             
             if not df_vend.empty:
@@ -127,13 +119,11 @@ if archivo:
                 
                 km_r, km_o = calc_total_km(ruta_real), calc_total_km(ruta_optima)
                 
-                # Métricas
                 c1, c2, c3 = st.columns(3)
                 c1.metric("Km Recorridos", f"{km_r:.2f} km")
                 c2.metric("Km Sugeridos", f"{km_o:.2f} km")
                 c3.metric("Ahorro Potencial", f"{km_r - km_o:.2f} km", f"{((km_r-km_o)/km_r*100 if km_r>0 else 0):.1f}%")
 
-                # Controles de Mapa
                 col_map1, col_map2 = st.columns([4, 1])
                 with col_map2:
                     st.write("Visualización:")
@@ -158,14 +148,16 @@ if archivo:
                     
                     st_folium(m, width="100%", height=500)
                 
-                st.download_button("📥 Descargar KML", simplekml.Kml().kml(), f"Ruta_{vendedor_sel}.kml")
+                # KML Download
+                kml = simplekml.Kml()
+                for _, r in ruta_optima.iterrows():
+                    kml.newpoint(name=f"#{r['orden_sugerido']} {r['cliente']}", coords=[(r['longitud'], r['latitud'])])
+                st.download_button("📥 Descargar KML", kml.kml(), f"Ruta_{vendedor_sel}.kml")
             else:
                 st.warning("Sin datos para este vendedor en esta fecha.")
 
         with tab2:
             st.subheader(f"📊 Desempeño Comparativo: Canal {canal_sel}")
-            
-            # Calcular resumen para todos los vendedores del canal en esa fecha
             vendedores_canal = df[(df['canal'] == canal_sel) & (df['fecha_solo'] == fecha_sel)]['vendedor'].unique()
             resumen_data = []
 
@@ -178,22 +170,12 @@ if archivo:
                     resumen_data.append({
                         "Vendedor": v,
                         "Km Real": round(km_real, 2),
-                        "Km Opt": round(km_opt, 2),
                         "Desvío (Km)": round(km_real - km_opt, 2),
                         "Efectividad (%)": round(efectividad, 1)
                     })
             
             if resumen_data:
                 res_df = pd.DataFrame(resumen_data).sort_values("Desvío (Km)", ascending=False)
-                
-                # Gráfico de Barras Plotly
-                fig = px.bar(res_df, x="Vendedor", y="Desvío (Km)", 
-                             title="Kilómetros de Desvío por Vendedor (Oportunidad de Ahorro)",
-                             color="Desvío (Km)", color_continuous_scale="Reds")
+                fig = px.bar(res_df, x="Vendedor", y="Desvío (Km)", color="Desvío (Km)", color_continuous_scale="Reds")
                 st.plotly_chart(fig, use_container_width=True)
-                
-                # Tabla de Ranking
-                st.markdown("### 🏆 Ranking de Orden y Efectividad")
                 st.dataframe(res_df.style.background_gradient(subset=['Desvío (Km)'], cmap='YlOrRd'), use_container_width=True)
-            else:
-                st.info("No hay suficientes datos comparativos para esta fecha.")
