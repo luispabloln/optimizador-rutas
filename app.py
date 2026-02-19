@@ -59,16 +59,21 @@ def calc_total_km(df_temp):
 
 def cargar_datos(source):
     try:
-        # Mejora: sep=None y engine='python' detectan automáticamente si es coma o punto y coma
-        # on_bad_lines='skip' evita el error de tokenización
         if isinstance(source, str):
             df = pd.read_csv(source, sep=None, engine='python', on_bad_lines='skip') if source.endswith('.csv') else pd.read_excel(source)
         else:
             df = pd.read_csv(source, sep=None, engine='python', on_bad_lines='skip') if source.name.endswith('.csv') else pd.read_excel(source)
             
-        df.columns = df.columns.str.strip().str.lower()
+        # Normalización robusta de columnas para evitar KeyError (incluyendo BOM)
+        df.columns = [str(c).replace('\ufeff', '').strip().lower() for c in df.columns]
+        
         df = df.rename(columns={'empleado': 'vendedor', 'lat': 'latitud', 'lon': 'longitud'})
         
+        # Validación de columna crítica 'tipo'
+        if 'tipo' not in df.columns:
+            st.error("No se encontró la columna 'Tipo' en el archivo.")
+            return None
+
         df['latitud'] = pd.to_numeric(df['latitud'], errors='coerce')
         df['longitud'] = pd.to_numeric(df['longitud'], errors='coerce')
         df = df.dropna(subset=['latitud', 'longitud'])
@@ -147,7 +152,7 @@ if df is not None:
                 for _, row in r_opt.iterrows():
                     num = row['orden_sugerido'] if t_num == "Sugerido" else row['orden_original']
                     color = "#27ae60" if t_num == "Sugerido" else "#e74c3c"
-                    icon_v = "✅" if str(row['tipo']).lower() == 'preventa' else "❌"
+                    icon_v = "✅" if str(row.get('tipo', '')).lower() == 'preventa' else "❌"
                     html = f"""<div style="background:{color};color:white;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-weight:bold;border:2px solid white;font-size:11px;">{num}</div>"""
                     folium.Marker([row['latitud'], row['longitud']], tooltip=f"{icon_v} {row['cliente']}", icon=DivIcon(icon_size=(26,26), html=html)).add_to(m)
                 st_folium(m, width="100%", height=500)
@@ -171,7 +176,6 @@ if df is not None:
         if res_dia:
             st.plotly_chart(px.bar(pd.DataFrame(res_dia).sort_values("Desvío (Km)", ascending=False), x="Vendedor", y="Desvío (Km)", color="Desvío (Km)", color_continuous_scale="Reds", title="Desvío Diario"), use_container_width=True)
 
-        # Acumulado Mensual
         st.markdown("---")
         st.markdown("#### 🗓️ Desvío Acumulado Mensual")
         mes_sel = df[df['fecha_solo'] == fecha_sel]['mes'].iloc[0]
