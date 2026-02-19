@@ -34,16 +34,19 @@ st.markdown("""
 
 def asignar_canal(nombre):
     nombre = str(nombre).upper()
-    # Luis Pablo en MZO según requerimiento
+    # Luis Pablo en MZO
     mzo_keywords = ['ABDY', 'MARCIA', 'JESUS', 'KEVIN', 'MARIBEL', 'LUIS PABLO']
     return 'MZO' if any(keyword in nombre for keyword in mzo_keywords) else 'TDB'
 
 def haversine(lat1, lon1, lat2, lon2):
-    R = 6371
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi, dlambda = math.radians(lat2-lat1), math.radians(lon2-lon1)
-    a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
-    return R * (2 * math.atan2(math.sqrt(a), math.sqrt(1-a)))
+    try:
+        R = 6371
+        phi1, phi2 = math.radians(lat1), math.radians(lat2)
+        dphi, dlambda = math.radians(lat2-lat1), math.radians(lon2-lon1)
+        a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
+        return R * (2 * math.atan2(math.sqrt(a), math.sqrt(1-a)))
+    except:
+        return 0
 
 def calc_total_km(df_temp):
     total = 0
@@ -59,7 +62,9 @@ def cargar_datos(uploaded_file):
         df.columns = df.columns.str.strip().str.lower()
         df = df.rename(columns={'empleado': 'vendedor', 'lat': 'latitud', 'lon': 'longitud'})
         
-        # --- LIMPIEZA DE NaNs (Solución al Error) ---
+        # Limpieza rigurosa de coordenadas
+        df['latitud'] = pd.to_numeric(df['latitud'], errors='coerce')
+        df['longitud'] = pd.to_numeric(df['longitud'], errors='coerce')
         df = df.dropna(subset=['latitud', 'longitud'])
         
         df['canal'] = df['vendedor'].apply(asignar_canal)
@@ -148,7 +153,6 @@ if archivo:
                     
                     st_folium(m, width="100%", height=500)
                 
-                # KML Download
                 kml = simplekml.Kml()
                 for _, r in ruta_optima.iterrows():
                     kml.newpoint(name=f"#{r['orden_sugerido']} {r['cliente']}", coords=[(r['longitud'], r['latitud'])])
@@ -178,4 +182,8 @@ if archivo:
                 res_df = pd.DataFrame(resumen_data).sort_values("Desvío (Km)", ascending=False)
                 fig = px.bar(res_df, x="Vendedor", y="Desvío (Km)", color="Desvío (Km)", color_continuous_scale="Reds")
                 st.plotly_chart(fig, use_container_width=True)
+                
+                # Tabla con gradiente de color (Requiere matplotlib)
                 st.dataframe(res_df.style.background_gradient(subset=['Desvío (Km)'], cmap='YlOrRd'), use_container_width=True)
+            else:
+                st.info("No hay suficientes datos comparativos para esta fecha.")
