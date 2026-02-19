@@ -187,7 +187,7 @@ if df is not None:
                     
                     html_icon = f"""<div style="background:{color};color:white;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-weight:bold;border:2px solid white;font-size:11px;box-shadow: 0 2px 4px rgba(0,0,0,0.2);">{num}</div>"""
                     
-                    texto_tooltip = f"{icon_v} {row['cliente']} | Hora: {row['fecha_hora'].strftime('%H:%M')} | Transcurrido: {tiempo_transcurrido}"
+                    texto_tooltip = f"{icon_v} {row['cliente']} | Orig: #{row['orden_original']} | Sug: #{row['orden_sugerido']} | Hora: {row['fecha_hora'].strftime('%H:%M')} | Trans: {tiempo_transcurrido}"
                     
                     texto_popup = f"""
                     <div style="font-family: sans-serif; min-width: 180px;">
