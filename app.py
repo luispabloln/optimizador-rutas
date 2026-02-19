@@ -82,15 +82,21 @@ def cargar_datos(source):
         df = df.dropna(subset=['latitud', 'longitud'])
         
         df['canal'] = df['vendedor'].apply(asignar_canal)
+        
+        # CORRECCIÓN DE PARSEO DE FECHA: Se agrega dayfirst=True para evitar meses fantasma (01/12 -> 12/01)
         if 'fecha' in df.columns and 'hora' in df.columns:
-            df['fecha_hora'] = pd.to_datetime(df['fecha'].astype(str) + ' ' + df['hora'].astype(str), errors='coerce')
+            df['fecha_hora'] = pd.to_datetime(df['fecha'].astype(str) + ' ' + df['hora'].astype(str), dayfirst=True, errors='coerce')
         else:
-            df['fecha_hora'] = pd.to_datetime(df['fecha'], errors='coerce')
+            df['fecha_hora'] = pd.to_datetime(df['fecha'], dayfirst=True, errors='coerce')
         
         df = df.dropna(subset=['fecha_hora'])
         df['fecha_solo'] = df['fecha_hora'].dt.date
-        # Creación de columna para filtro por mes
         df['mes'] = df['fecha_hora'].dt.strftime('%Y-%m')
+        
+        # Limpieza de espacios en blanco en columnas de texto críticas
+        if 'tipo' in df.columns:
+            df['tipo'] = df['tipo'].astype(str).str.strip()
+            
         return df
     except Exception as e:
         st.error(f"Error al cargar datos: {e}")
@@ -124,7 +130,7 @@ if df is not None:
         meses_disponibles = sorted(df['mes'].unique(), reverse=True)
         mes_sel = st.selectbox("Seleccionar Mes", meses_disponibles)
         
-        # Filtrar datos por mes seleccionado antes de mostrar fechas
+        # Filtrar datos por mes seleccionado
         df_filtrado_mes = df[df['mes'] == mes_sel]
         
         fechas_disponibles = sorted(df_filtrado_mes['fecha_solo'].unique(), reverse=True)
