@@ -34,7 +34,6 @@ st.markdown("""
 
 def asignar_canal(nombre):
     nombre = str(nombre).upper()
-    # Luis Pablo en MZO
     mzo_keywords = ['ABDY', 'MARCIA', 'JESUS', 'KEVIN', 'MARIBEL', 'LUIS PABLO']
     return 'MZO' if any(keyword in nombre for keyword in mzo_keywords) else 'TDB'
 
@@ -62,7 +61,7 @@ def cargar_datos(uploaded_file):
         df.columns = df.columns.str.strip().str.lower()
         df = df.rename(columns={'empleado': 'vendedor', 'lat': 'latitud', 'lon': 'longitud'})
         
-        # Limpieza rigurosa de coordenadas
+        # Limpieza de coordenadas
         df['latitud'] = pd.to_numeric(df['latitud'], errors='coerce')
         df['longitud'] = pd.to_numeric(df['longitud'], errors='coerce')
         df = df.dropna(subset=['latitud', 'longitud'])
@@ -132,13 +131,13 @@ if archivo:
                 col_map1, col_map2 = st.columns([4, 1])
                 with col_map2:
                     st.write("Visualización:")
-                    ver_orig = st.checkbox("Ruta Real", True)
-                    ver_opt = st.checkbox("Ruta Opt", True)
-                    tipo_num = st.radio("Número:", ["Sugerido", "Original"])
+                    ver_orig = st.checkbox("Ver Línea Real", True)
+                    ver_opt = st.checkbox("Ver Línea Sugerida", True)
+                    tipo_num = st.radio("Número en círculo:", ["Sugerido", "Original"])
 
                 with col_map1:
                     m = folium.Map(location=[ruta_real['latitud'].mean(), ruta_real['longitud'].mean()], zoom_start=14, tiles="cartodbpositron")
-                    Fullscreen().add_to(m)
+                    Fullscreen(position='topright').add_to(m)
                     
                     if ver_orig:
                         folium.PolyLine(list(zip(ruta_real['latitud'], ruta_real['longitud'])), color="#e74c3c", weight=3, opacity=0.4).add_to(m)
@@ -148,42 +147,31 @@ if archivo:
                     for _, row in ruta_optima.iterrows():
                         num = row['orden_sugerido'] if tipo_num == "Sugerido" else row['orden_original']
                         color = "#27ae60" if tipo_num == "Sugerido" else "#e74c3c"
-                        html = f"""<div style="background:{color};color:white;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-weight:bold;border:2px solid white;font-size:11px;">{num}</div>"""
-                        folium.Marker([row['latitud'], row['longitud']], tooltip=row['cliente'], icon=DivIcon(icon_size=(26,26), icon_anchor=(13,13), html=html)).add_to(m)
+                        icon_v = "✅" if str(row['tipo']).lower() == 'preventa' else "❌"
+                        
+                        # Icono personalizado
+                        html_icon = f"""<div style="background:{color};color:white;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-weight:bold;border:2px solid white;font-size:11px;box-shadow: 0 2px 4px rgba(0,0,0,0.2);">{num}</div>"""
+                        
+                        # --- DATOS DEL GLOBO FLOTANTE (RESTAURADO) ---
+                        texto_tooltip = f"{icon_v} {row['cliente']} | Orig: #{row['orden_original']} ➡️ Sug: #{row['orden_sugerido']}"
+                        
+                        texto_popup = f"""
+                        <div style="font-family: sans-serif; min-width: 180px;">
+                            <h4 style="margin:0;">{row['cliente']}</h4>
+                            <hr style="margin:5px 0;">
+                            <b>Estado:</b> {row['tipo']}<br>
+                            <b>Hora Real:</b> {row['fecha_hora'].strftime('%H:%M')}<br>
+                            <b>Orden Real:</b> {row['orden_original']}<br>
+                            <b>Orden Sugerido:</b> {row['orden_sugerido']}<br>
+                            <b>Monto:</b> {row['monto']}
+                        </div>
+                        """
+                        
+                        folium.Marker(
+                            location=[row['latitud'], row['longitud']], 
+                            tooltip=texto_tooltip, 
+                            popup=folium.Popup(texto_popup, max_width=300),
+                            icon=DivIcon(icon_size=(26,26), icon_anchor=(13,13), html=html_icon)
+                        ).add_to(m)
                     
-                    st_folium(m, width="100%", height=500)
-                
-                kml = simplekml.Kml()
-                for _, r in ruta_optima.iterrows():
-                    kml.newpoint(name=f"#{r['orden_sugerido']} {r['cliente']}", coords=[(r['longitud'], r['latitud'])])
-                st.download_button("📥 Descargar KML", kml.kml(), f"Ruta_{vendedor_sel}.kml")
-            else:
-                st.warning("Sin datos para este vendedor en esta fecha.")
-
-        with tab2:
-            st.subheader(f"📊 Desempeño Comparativo: Canal {canal_sel}")
-            vendedores_canal = df[(df['canal'] == canal_sel) & (df['fecha_solo'] == fecha_sel)]['vendedor'].unique()
-            resumen_data = []
-
-            for v in vendedores_canal:
-                d_v = df[(df['vendedor'] == v) & (df['fecha_solo'] == fecha_sel)].sort_values('fecha_hora')
-                if len(d_v) > 1:
-                    km_real = calc_total_km(d_v)
-                    km_opt = calc_total_km(optimizar_ruta_vecino(d_v))
-                    efectividad = (len(d_v[d_v['tipo'] == 'PreVenta']) / len(d_v)) * 100
-                    resumen_data.append({
-                        "Vendedor": v,
-                        "Km Real": round(km_real, 2),
-                        "Desvío (Km)": round(km_real - km_opt, 2),
-                        "Efectividad (%)": round(efectividad, 1)
-                    })
-            
-            if resumen_data:
-                res_df = pd.DataFrame(resumen_data).sort_values("Desvío (Km)", ascending=False)
-                fig = px.bar(res_df, x="Vendedor", y="Desvío (Km)", color="Desvío (Km)", color_continuous_scale="Reds")
-                st.plotly_chart(fig, use_container_width=True)
-                
-                # Tabla con gradiente de color (Requiere matplotlib)
-                st.dataframe(res_df.style.background_gradient(subset=['Desvío (Km)'], cmap='YlOrRd'), use_container_width=True)
-            else:
-                st.info("No hay suficientes datos comparativos para esta fecha.")
+                    st_fol
