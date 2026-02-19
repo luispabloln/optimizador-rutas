@@ -9,6 +9,10 @@ import simplekml
 import math
 import plotly.express as px
 
+# --- CONFIGURACIÓN DE CARGA AUTOMÁTICA DESDE GITHUB ---
+# Sustituye esta URL por el enlace "Raw" de tu archivo en GitHub
+GITHUB_RAW_URL = "https://raw.githubusercontent.com/tu_usuario/tu_repositorio/main/tu_archivo.csv"
+
 # --- ESTILO LOOKER STUDIO (CSS) ---
 st.set_page_config(page_title="Auditoría GPS Pro", layout="wide", page_icon="📊")
 
@@ -59,9 +63,14 @@ def calc_total_km(df_temp):
                            df_temp.iloc[i+1]['latitud'], df_temp.iloc[i+1]['longitud'])
     return total
 
-def cargar_datos(uploaded_file):
+def cargar_datos(source):
     try:
-        df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
+        # Detecta si el source es una URL de GitHub o un objeto de subida
+        if isinstance(source, str):
+            df = pd.read_csv(source) if source.endswith('.csv') else pd.read_excel(source)
+        else:
+            df = pd.read_csv(source) if source.name.endswith('.csv') else pd.read_excel(source)
+            
         df.columns = df.columns.str.strip().str.lower()
         df = df.rename(columns={'empleado': 'vendedor', 'lat': 'latitud', 'lon': 'longitud'})
         
@@ -78,7 +87,7 @@ def cargar_datos(uploaded_file):
         df['fecha_solo'] = df['fecha_hora'].dt.date
         return df
     except Exception as e:
-        st.error(f"Error al cargar archivo: {e}")
+        st.error(f"Error al cargar datos: {e}")
         return None
 
 def optimizar_ruta_vecino(df_ruta):
@@ -97,117 +106,115 @@ def optimizar_ruta_vecino(df_ruta):
 # --- INTERFAZ ---
 
 st.title("📍 Dashboard de Auditoría GPS Pro")
-archivo = st.file_uploader("📂 Cargar archivo de registros", type=["xlsx", "csv"])
 
-if archivo:
-    df = cargar_datos(archivo)
-    
-    if df is not None:
-        with st.sidebar:
-            st.header("⚙️ Configuración Global")
-            canal_sel = st.selectbox("Canal de Venta", ["MZO", "TDB"])
-            fechas_disponibles = sorted(df['fecha_solo'].unique(), reverse=True)
-            fecha_sel = st.selectbox("Fecha de Auditoría", fechas_disponibles)
-            st.divider()
-            velocidad = st.slider("Velocidad (km/h)", 10, 60, 25)
+# Carga automática desde GitHub
+df = cargar_datos(GITHUB_RAW_URL)
 
-        tab1, tab2 = st.tabs(["👤 Auditoría Individual", "🏢 Análisis de Canal"])
+if df is not None:
+    with st.sidebar:
+        st.header("⚙️ Configuración Global")
+        canal_sel = st.selectbox("Canal de Venta", ["MZO", "TDB"])
+        fechas_disponibles = sorted(df['fecha_solo'].unique(), reverse=True)
+        fecha_sel = st.selectbox("Fecha de Auditoría", fechas_disponibles)
+        st.divider()
+        velocidad = st.slider("Velocidad (km/h)", 10, 60, 25)
 
-        with tab1:
-            vendedores_filtrados = sorted(df[df['canal'] == canal_sel]['vendedor'].unique())
-            vendedor_sel = st.selectbox("Seleccionar Empleado", vendedores_filtrados)
+    tab1, tab2 = st.tabs(["👤 Auditoría Individual", "🏢 Análisis de Canal"])
+
+    with tab1:
+        vendedores_filtrados = sorted(df[df['canal'] == canal_sel]['vendedor'].unique())
+        vendedor_sel = st.selectbox("Seleccionar Empleado", vendedores_filtrados)
+        
+        df_vend = df[(df['vendedor'] == vendedor_sel) & (df['fecha_solo'] == fecha_sel)].sort_values('fecha_hora').reset_index(drop=True)
+        
+        if not df_vend.empty:
+            ruta_real = df_vend.copy()
+            ruta_real['orden_original'] = range(1, len(ruta_real) + 1)
+            ruta_optima = optimizar_ruta_vecino(ruta_real)
+            ruta_optima['orden_sugerido'] = range(1, len(ruta_optima) + 1)
             
-            df_vend = df[(df['vendedor'] == vendedor_sel) & (df['fecha_solo'] == fecha_sel)].sort_values('fecha_hora').reset_index(drop=True)
+            km_r, km_o = calc_total_km(ruta_real), calc_total_km(ruta_optima)
             
-            if not df_vend.empty:
-                ruta_real = df_vend.copy()
-                ruta_real['orden_original'] = range(1, len(ruta_real) + 1)
-                ruta_optima = optimizar_ruta_vecino(ruta_real)
-                ruta_optima['orden_sugerido'] = range(1, len(ruta_optima) + 1)
+            c_met1, c_met2, c_met3 = st.columns(3)
+            c_met1.metric("Km Recorridos", f"{km_r:.2f} km")
+            c_met2.metric("Km Sugeridos", f"{km_o:.2f} km")
+            c_met3.metric("Ahorro Potencial", f"{km_r - km_o:.2f} km", f"{((km_r-km_o)/km_r*100 if km_r>0 else 0):.1f}%")
+
+            col_map1, col_map2 = st.columns([4, 1])
+            with col_map2:
+                st.write("Visualización:")
+                ver_orig = st.checkbox("Ver Línea Real", True)
+                ver_opt = st.checkbox("Ver Línea Sugerida", True)
+                tipo_num = st.radio("Número en círculo:", ["Sugerido", "Original"])
+
+            with col_map1:
+                m = folium.Map(location=[ruta_real['latitud'].mean(), ruta_real['longitud'].mean()], zoom_start=14, tiles="cartodbpositron")
+                Fullscreen(position='topright').add_to(m)
                 
-                km_r, km_o = calc_total_km(ruta_real), calc_total_km(ruta_optima)
+                if ver_orig:
+                    folium.PolyLine(list(zip(ruta_real['latitud'], ruta_real['longitud'])), color="#e74c3c", weight=3, opacity=0.4).add_to(m)
+                if ver_opt:
+                    folium.PolyLine(list(zip(ruta_optima['latitud'], ruta_optima['longitud'])), color="#27ae60", weight=5, opacity=0.7, dash_array='8, 8').add_to(m)
                 
-                c_met1, c_met2, c_met3 = st.columns(3)
-                c_met1.metric("Km Recorridos", f"{km_r:.2f} km")
-                c_met2.metric("Km Sugeridos", f"{km_o:.2f} km")
-                c_met3.metric("Ahorro Potencial", f"{km_r - km_o:.2f} km", f"{((km_r-km_o)/km_r*100 if km_r>0 else 0):.1f}%")
-
-                col_map1, col_map2 = st.columns([4, 1])
-                with col_map2:
-                    st.write("Visualización:")
-                    ver_orig = st.checkbox("Ver Línea Real", True)
-                    ver_opt = st.checkbox("Ver Línea Sugerida", True)
-                    tipo_num = st.radio("Número en círculo:", ["Sugerido", "Original"])
-
-                with col_map1:
-                    m = folium.Map(location=[ruta_real['latitud'].mean(), ruta_real['longitud'].mean()], zoom_start=14, tiles="cartodbpositron")
-                    Fullscreen(position='topright').add_to(m)
+                for _, row in ruta_optima.iterrows():
+                    num = row['orden_sugerido'] if tipo_num == "Sugerido" else row['orden_original']
+                    color = "#27ae60" if tipo_num == "Sugerido" else "#e74c3c"
+                    icon_v = "✅" if str(row['tipo']).lower() == 'preventa' else "❌"
                     
-                    if ver_orig:
-                        folium.PolyLine(list(zip(ruta_real['latitud'], ruta_real['longitud'])), color="#e74c3c", weight=3, opacity=0.4).add_to(m)
-                    if ver_opt:
-                        folium.PolyLine(list(zip(ruta_optima['latitud'], ruta_optima['longitud'])), color="#27ae60", weight=5, opacity=0.7, dash_array='8, 8').add_to(m)
+                    html_icon = f"""<div style="background:{color};color:white;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-weight:bold;border:2px solid white;font-size:11px;box-shadow: 0 2px 4px rgba(0,0,0,0.2);">{num}</div>"""
                     
-                    for _, row in ruta_optima.iterrows():
-                        num = row['orden_sugerido'] if tipo_num == "Sugerido" else row['orden_original']
-                        color = "#27ae60" if tipo_num == "Sugerido" else "#e74c3c"
-                        icon_v = "✅" if str(row['tipo']).lower() == 'preventa' else "❌"
-                        
-                        html_icon = f"""<div style="background:{color};color:white;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-weight:bold;border:2px solid white;font-size:11px;box-shadow: 0 2px 4px rgba(0,0,0,0.2);">{num}</div>"""
-                        
-                        texto_tooltip = f"{icon_v} {row['cliente']} | Orig: #{row['orden_original']} ➡️ Sug: #{row['orden_sugerido']}"
-                        
-                        texto_popup = f"""
-                        <div style="font-family: sans-serif; min-width: 180px;">
-                            <h4 style="margin:0;">{row['cliente']}</h4>
-                            <hr style="margin:5px 0;">
-                            <b>Estado:</b> {row['tipo']}<br>
-                            <b>Hora Real:</b> {row['fecha_hora'].strftime('%H:%M')}<br>
-                            <b>Orden Real:</b> {row['orden_original']}<br>
-                            <b>Orden Sugerido:</b> {row['orden_sugerido']}<br>
-                            <b>Monto:</b> {row['monto']}
-                        </div>
-                        """
-                        
-                        folium.Marker(
-                            location=[row['latitud'], row['longitud']], 
-                            tooltip=texto_tooltip, 
-                            popup=folium.Popup(texto_popup, max_width=300),
-                            icon=DivIcon(icon_size=(26,26), icon_anchor=(13,13), html=html_icon)
-                        ).add_to(m)
+                    texto_tooltip = f"{icon_v} {row['cliente']} | Orig: #{row['orden_original']} ➡️ Sug: #{row['orden_sugerido']}"
                     
-                    # Línea 177: Corregida de st_fol a st_folium
-                    st_folium(m, width="100%", height=550)
+                    texto_popup = f"""
+                    <div style="font-family: sans-serif; min-width: 180px;">
+                        <h4 style="margin:0;">{row['cliente']}</h4>
+                        <hr style="margin:5px 0;">
+                        <b>Estado:</b> {row['tipo']}<br>
+                        <b>Hora Real:</b> {row['fecha_hora'].strftime('%H:%M')}<br>
+                        <b>Orden Real:</b> {row['orden_original']}<br>
+                        <b>Orden Sugerido:</b> {row['orden_sugerido']}<br>
+                        <b>Monto:</b> {row['monto']}
+                    </div>
+                    """
+                    
+                    folium.Marker(
+                        location=[row['latitud'], row['longitud']], 
+                        tooltip=texto_tooltip, 
+                        popup=folium.Popup(texto_popup, max_width=300),
+                        icon=DivIcon(icon_size=(26,26), icon_anchor=(13,13), html=html_icon)
+                    ).add_to(m)
                 
-                kml = simplekml.Kml()
-                for _, r in ruta_optima.iterrows():
-                    kml.newpoint(name=f"#{r['orden_sugerido']} {r['cliente']}", coords=[(r['longitud'], r['latitud'])])
-                st.download_button("📥 Descargar KML", kml.kml(), f"Ruta_{vendedor_sel}.kml")
-            else:
-                st.warning("Sin datos para este vendedor en esta fecha.")
-
-        with tab2:
-            st.subheader(f"📊 Desempeño Comparativo: Canal {canal_sel}")
-            vendedores_canal = df[(df['canal'] == canal_sel) & (df['fecha_solo'] == fecha_sel)]['vendedor'].unique()
-            resumen_data = []
-
-            for v in vendedores_canal:
-                d_v = df[(df['vendedor'] == v) & (df['fecha_solo'] == fecha_sel)].sort_values('fecha_hora')
-                if len(d_v) > 1:
-                    km_real = calc_total_km(d_v)
-                    km_opt = calc_total_km(optimizar_ruta_vecino(d_v))
-                    efectividad = (len(d_v[d_v['tipo'].str.lower() == 'preventa']) / len(d_v)) * 100
-                    resumen_data.append({
-                        "Vendedor": v,
-                        "Km Real": round(km_real, 2),
-                        "Desvío (Km)": round(km_real - km_opt, 2),
-                        "Efectividad (%)": round(efectividad, 1)
-                    })
+                st_folium(m, width="100%", height=550)
             
-            if resumen_data:
-                res_df = pd.DataFrame(resumen_data).sort_values("Desvío (Km)", ascending=False)
-                fig = px.bar(res_df, x="Vendedor", y="Desvío (Km)", color="Desvío (Km)", color_continuous_scale="Reds")
-                st.plotly_chart(fig, use_container_width=True)
-                st.dataframe(res_df.style.background_gradient(subset=['Desvío (Km)'], cmap='YlOrRd'), use_container_width=True)
-            else:
-                st.info("No hay suficientes datos comparativos para esta fecha.")
+            kml = simplekml.Kml()
+            for _, r in ruta_optima.iterrows():
+                kml.newpoint(name=f"#{r['orden_sugerido']} {r['cliente']}", coords=[(r['longitud'], r['latitud'])])
+            st.download_button("📥 Descargar KML", kml.kml(), f"Ruta_{vendedor_sel}.kml")
+        else:
+            st.warning("Sin datos para este vendedor en esta fecha.")
+
+    with tab2:
+        st.subheader(f"📊 Desempeño Comparativo: Canal {canal_sel}")
+        vendedores_canal = df[(df['canal'] == canal_sel) & (df['fecha_solo'] == fecha_sel)]['vendedor'].unique()
+        resumen_data = []
+
+        for v in vendedores_canal:
+            d_v = df[(df['vendedor'] == v) & (df['fecha_solo'] == fecha_sel)].sort_values('fecha_hora')
+            if len(d_v) > 1:
+                km_real = calc_total_km(d_v)
+                km_opt = calc_total_km(optimizar_ruta_vecino(d_v))
+                efectividad = (len(d_v[d_v['tipo'].str.lower() == 'preventa']) / len(d_v)) * 100
+                resumen_data.append({
+                    "Vendedor": v,
+                    "Km Real": round(km_real, 2),
+                    "Desvío (Km)": round(km_real - km_opt, 2),
+                    "Efectividad (%)": round(efectividad, 1)
+                })
+        
+        if resumen_data:
+            res_df = pd.DataFrame(resumen_data).sort_values("Desvío (Km)", ascending=False)
+            fig = px.bar(res_df, x="Vendedor", y="Desvío (Km)", color="Desvío (Km)", color_continuous_scale="Reds")
+            st.plotly_chart(fig, use_container_width=True)
+            st.dataframe(res_df.style.background_gradient(subset=['Desvío (Km)'], cmap='YlOrRd'), use_container_width=True)
+        else:
+            st.info("No hay suficientes datos comparativos para esta fecha.")
