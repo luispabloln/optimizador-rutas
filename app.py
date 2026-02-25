@@ -10,6 +10,7 @@ import math
 import plotly.express as px
 
 # --- CONFIGURACIÓN DE CARGA AUTOMÁTICA DESDE GITHUB ---
+# Se utiliza la URL Raw proporcionada para la carga directa
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/luispabloln/optimizador-rutas/refs/heads/main/clientes%20atendidos.csv"
 
 # --- ESTILO LOOKER STUDIO (CSS) ---
@@ -37,7 +38,8 @@ st.markdown("""
 
 def asignar_canal(nombre):
     nombre = str(nombre).upper()
-    mzo_keywords = ['ABDY', 'MARCIA', 'JESUS', 'KEVIN', 'MARIBEL', 'LUIS PABLO']
+    # Se reemplaza MARCIA por LIMBERG PEREZ MERAS en los keywords de MZO
+    mzo_keywords = ['ABDY', 'LIMBERG PEREZ MERAS', 'JESUS', 'KEVIN', 'MARIBEL', 'LUIS PABLO']
     if any(keyword in nombre for keyword in mzo_keywords):
         return 'MZO'
     else:
@@ -83,7 +85,6 @@ def cargar_datos(source):
         
         df['canal'] = df['vendedor'].apply(asignar_canal)
         
-        # CORRECCIÓN DE FILTRO DE MES: Se fuerza el parseo con dayfirst=True para evitar interpretaciones incorrectas del formato DD/MM/AAAA
         if 'fecha' in df.columns and 'hora' in df.columns:
             df['fecha_hora'] = pd.to_datetime(df['fecha'].astype(str) + ' ' + df['hora'].astype(str), dayfirst=True, errors='coerce')
         else:
@@ -121,11 +122,9 @@ if df is not None:
         st.header("⚙️ Configuración Global")
         canal_sel = st.selectbox("Canal de Venta", ["MZO", "TDB"])
         
-        # Filtro por Mes: Se filtran los meses reales detectados tras el parseo corregido
         meses_disponibles = sorted(df['mes'].unique(), reverse=True)
         mes_sel = st.selectbox("Seleccionar Mes", meses_disponibles)
         
-        # Filtrar datos por mes seleccionado antes de mostrar fechas
         df_filtrado_mes = df[df['mes'] == mes_sel]
         
         fechas_disponibles = sorted(df_filtrado_mes['fecha_solo'].unique(), reverse=True)
@@ -170,7 +169,6 @@ if df is not None:
                 if ver_opt:
                     folium.PolyLine(list(zip(ruta_optima['latitud'], ruta_optima['longitud'])), color="#27ae60", weight=5, opacity=0.7, dash_array='8, 8').add_to(m)
                 
-                # Cálculo de visitas duplicadas
                 conteo_visitas = ruta_optima['cliente'].value_counts()
                 
                 prev_time = None
